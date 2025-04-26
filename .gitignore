@@ -1,0 +1,18 @@
+# Bỏ qua file cấu hình Firebase
+embedded_system/firebase_config.json
+firebase.json
+google-services.json
+
+# Bỏ qua file môi trường
+.env
+.env.local
+
+# Bỏ qua thư mục build
+/build/
+/dist/
+
+# Bỏ qua file tạm
+*.log
+.DS_Store
+.idea/
+.vscode/
