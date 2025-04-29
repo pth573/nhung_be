@@ -19,6 +19,8 @@ class Alert(models.Model):
         ordering = ['-start_time']
 
 class SensorData(models.Model):
+    latitude = models.FloatField(default=0.0)
+    longitude = models.FloatField(default=0.0)
     AccX = models.FloatField()
     AccY = models.FloatField()
     AccZ = models.FloatField()

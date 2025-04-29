@@ -8,7 +8,7 @@ urlpatterns = [
     path('recent-route/', views.RecentRouteView.as_view(), name='recent_route'),
     path('alerts/', views.AlertView.as_view(), name='alerts'),
     path('alerts/<str:start_time>/', views.AlertDetailView.as_view(), name='alert_detail'),
-    # path('delete-sensor-data/', views.DeleteSensorDataView.as_view(), name='delete_sensor_data'), 
-    # path('delete-route-data/', views.DeleteRouteDataView.as_view(), name='delete_route_data'),  
-    # path('delete-alert-data/', views.DeleteAlertDataView.as_view(), name='delete_alert_data'),  
+    path('delete-sensor-data/', views.DeleteSensorDataView.as_view(), name='delete_sensor_data'),
+    path('delete-route-data/', views.DeleteRouteDataView.as_view(), name='delete_route_data'),
+    path('delete-alert-data/', views.DeleteAlertDataView.as_view(), name='delete_alert_data'),
 ]

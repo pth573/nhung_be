@@ -1,18 +1,15 @@
 from rest_framework import serializers
-from .models import Route, Alert
+from .models import Route, Alert, SensorData
 
-class SensorDataSerializer(serializers.Serializer):
-    timestamp = serializers.CharField()
-    latitude = serializers.FloatField()
-    longitude = serializers.FloatField()
-    AccX = serializers.FloatField()
-    AccY = serializers.FloatField()
-    AccZ = serializers.FloatField()
-    GyroX = serializers.FloatField()
-    GyroY = serializers.FloatField()
-    GyroZ = serializers.FloatField()
-    Temperature = serializers.FloatField()
-    vibration_detected = serializers.BooleanField()
+class SensorDataSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SensorData
+        fields = [
+            'timestamp', 'latitude', 'longitude', 
+            'AccX', 'AccY', 'AccZ', 
+            'GyroX', 'GyroY', 'GyroZ', 
+            'temperature', 'vibration_detected'
+        ]
 
 class RouteSerializer(serializers.ModelSerializer):
     class Meta:
