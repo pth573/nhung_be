@@ -14,6 +14,10 @@ urlpatterns = [
 
     #Trip
     path('trip/history/', views.TripView.as_view(), name='trip'),
-    path('trip/start/', views.StartTripView.as_view(), name='create_trip'),
-    path('trip/end/', views.EndTripView.as_view(), name='update_trip_end'),
+    path('trip/start', views.StartTripView.as_view(), name='create_trip'),
+    path('trip/end', views.EndTripView.as_view(), name='update_trip_end'),
+
+    #Device Token
+    path('device-token', views.DeviceTokenView.as_view(), name='device_token'),
+    path('send-notification', views.NotificationView.as_view(), name='send_notification'),
 ]

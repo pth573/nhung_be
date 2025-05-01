@@ -3,8 +3,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from firebase_admin import db
 import requests
-from .models import Route, Alert, SensorData, Trip
-from .serializers import SensorDataSerializer, RouteSerializer, AlertSerializer, TripSerializer
+from .models import Route, Alert, SensorData, Trip, DeviceToken
+from .serializers import SensorDataSerializer, RouteSerializer, AlertSerializer, TripSerializer, DeviceTokenSerializer
 import threading
 from ai_module.motion_predictor import MotionPredictor
 import json
@@ -12,6 +12,7 @@ import time
 from datetime import datetime, timedelta
 from geopy.distance import geodesic
 from django.db.models import Q
+from firebase_admin import messaging
 
 # Khởi tạo MotionPredictor từ ai_module
 motion_predictor = MotionPredictor()
@@ -126,6 +127,7 @@ def firebase_listener():
             Route.objects.create(
                 latitude=new_data['latitude'],
                 longitude=new_data['longitude'],
+                location=get_address_from_nominatim(new_data['latitude'], new_data['longitude']),
                 time=str(current_timestamp)  
             )
 
@@ -147,6 +149,7 @@ def handle_vibration_alert(timestamp, data, prediction):
         latitude = data['latitude']
         longitude = data['longitude']
         address = get_address_from_nominatim(latitude, longitude)
+        send_push_notification("Cảnh báo rung lắc", f"Phát hiện rung lắc tại {address}")
 
         if active_alert is None:
             active_alert = Alert.objects.create(
@@ -162,6 +165,28 @@ def handle_vibration_alert(timestamp, data, prediction):
         active_alert.is_active = False
         active_alert.save()
         active_alert = None
+
+def send_push_notification(title, body):
+    try:
+        token = DeviceToken.objects.first() 
+        print(f"Token: {token}")
+        if token:
+            # Tạo thông báo
+            message = messaging.Message(
+                notification=messaging.Notification(
+                    title=title,
+                    body=body,
+                ),
+                token=token.token,
+            )
+
+            response = messaging.send(message)
+            print(f'Successfully sent message: {response}')
+        else:
+            print("No token found for this user.")
+
+    except Exception as e:
+        print(f'Error sending message: {e}')
 
 def get_address_from_nominatim(latitude, longitude):
     url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
@@ -376,3 +401,25 @@ class TripView(APIView):
 
         serializer = TripSerializer(trips, many=True)
         return Response(serializer.data)
+
+class DeviceTokenView(APIView):
+    def post(self, request):
+        serializer = DeviceTokenSerializer(data=request.data)
+        print(serializer)
+        if serializer.is_valid():
+            token = serializer.validated_data['token']
+            DeviceToken.objects.update_or_create(token=token)
+            return Response({'message': 'Token saved'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+
+class NotificationView(APIView):
+    def post(self, request):
+        title = 'Test Notification'
+        body = 'This is a test notification.'
+        
+        try:
+            send_push_notification(title, body)
+            return Response({'message': 'Notification sent successfully'}, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
