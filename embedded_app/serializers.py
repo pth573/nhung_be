@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Route, Alert, SensorData
+from .models import Route, Alert, SensorData, Trip
 
 class SensorDataSerializer(serializers.ModelSerializer):
     class Meta:
@@ -16,9 +16,17 @@ class RouteSerializer(serializers.ModelSerializer):
         model = Route
         fields = ['latitude', 'longitude', 'time']
 
+class TripSerializer(serializers.ModelSerializer):
+    start_route = RouteSerializer()
+    end_route = RouteSerializer(required=False, allow_null=True)
+
+    class Meta:
+        model = Trip
+        fields = ['id', 'start_route', 'end_route', 'distance', 'duration']
+
 class AlertSerializer(serializers.ModelSerializer):
     key = serializers.CharField(source='id', read_only=True)  
 
     class Meta:
         model = Alert
-        fields = ['key', 'start_time', 'end_time', 'latitude', 'longitude', 'is_active']
+        fields = ['key', 'start_time', 'end_time', 'latitude', 'longitude', 'location', 'is_active']

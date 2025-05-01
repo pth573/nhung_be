@@ -2,12 +2,16 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from firebase_admin import db
-from .models import Route, Alert, SensorData
-from .serializers import SensorDataSerializer, RouteSerializer, AlertSerializer
+import requests
+from .models import Route, Alert, SensorData, Trip
+from .serializers import SensorDataSerializer, RouteSerializer, AlertSerializer, TripSerializer
 import threading
 from ai_module.motion_predictor import MotionPredictor
 import json
 import time
+from datetime import datetime, timedelta
+from geopy.distance import geodesic
+from django.db.models import Q
 
 # Khởi tạo MotionPredictor từ ai_module
 motion_predictor = MotionPredictor()
@@ -140,12 +144,17 @@ def handle_vibration_alert(timestamp, data, prediction):
     global active_alert
 
     if prediction == 1:
+        latitude = data['latitude']
+        longitude = data['longitude']
+        address = get_address_from_nominatim(latitude, longitude)
+
         if active_alert is None:
             active_alert = Alert.objects.create(
                 start_time=timestamp,
                 end_time=None,
                 latitude=data['latitude'],
                 longitude=data['longitude'],
+                location=address,
                 is_active=True
             )
     elif prediction == 0 and active_alert is not None:
@@ -153,6 +162,18 @@ def handle_vibration_alert(timestamp, data, prediction):
         active_alert.is_active = False
         active_alert.save()
         active_alert = None
+
+def get_address_from_nominatim(latitude, longitude):
+    url = f"https://nominatim.openstreetmap.org/reverse?lat={latitude}&lon={longitude}&format=json"
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            data = response.json()
+            return data.get('display_name', '-')
+        return '-'
+    except Exception as e:
+        print(f"Nominatim error: {e}")
+        return '-'
 
 # Khởi động worker lắng nghe Firebase
 listener_thread = threading.Thread(target=firebase_listener, daemon=True)
@@ -225,9 +246,29 @@ class RecentRouteView(APIView):
         serializer = RouteSerializer(routes, many=True)
         return Response({'route': serializer.data})
 
+
 class AlertView(APIView):
     def get(self, request):
+        offset = int(request.query_params.get('offset', 0))
+        limit = int(request.query_params.get('limit', 10))
+        order = request.query_params.get('order', 'desc')  # 'asc' hoặc 'desc'
+        query = request.query_params.get('query', '')
+
         alerts = Alert.objects.all()
+
+       # Lọc theo location nếu có query
+        if query:
+            alerts = alerts.filter(location__icontains=query)
+
+        # Sắp xếp theo thời gian
+        if order == 'asc':
+            alerts = alerts.order_by('start_time')
+        else:
+            alerts = alerts.order_by('-start_time')
+
+        # Phân trang
+        alerts = alerts[offset:offset + limit]
+
         serializer = AlertSerializer(alerts, many=True)
         return Response(serializer.data)
 
@@ -269,3 +310,69 @@ class DeleteAlertDataView(APIView):
             return Response({"message": f"Đã xóa thành công {count} bản ghi cảnh báo."}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        
+#Trip
+class StartTripView(APIView):
+    def post(self, request):
+        latest_route = Route.objects.order_by('-time').first()
+        if not latest_route:
+            return Response({"message": f"Start trip"}, status=status.HTTP_404_NOT_FOUND)
+        
+        trip = Trip.objects.create(start_route=latest_route)
+        return Response(TripSerializer(trip).data, status=status.HTTP_201_CREATED)
+
+class EndTripView(APIView):
+    def post(self, request):
+        trip = Trip.objects.filter(end_route__isnull=True).order_by('-id').first()
+        if not trip:
+            return Response({'error': 'No active trip found'}, status=status.HTTP_404_NOT_FOUND)
+
+        end_route = Route.objects.order_by('-time').first()
+        if not end_route:
+            return Response({'error': 'No route data available'}, status=status.HTTP_404_NOT_FOUND)
+
+        trip.end_route = end_route
+
+        # Tính khoảng cách
+        start_coords = (trip.start_route.latitude, trip.start_route.longitude)
+        end_coords = (end_route.latitude, end_route.longitude)
+        trip.distance = geodesic(start_coords, end_coords).km
+
+        # Tính duration từ time dạng epoch (ms)
+        try:
+            start_time = datetime.fromtimestamp(int(trip.start_route.time) / 1000)
+            end_time = datetime.fromtimestamp(int(end_route.time) / 1000)
+            trip.duration = end_time - start_time
+        except Exception:
+            trip.duration = None
+
+        trip.save()
+        return Response({"message": f"End trip"}, status=status.HTTP_200_OK)
+
+class TripView(APIView):
+    def get(self, request):
+        offset = int(request.query_params.get('offset', 0))
+        limit = int(request.query_params.get('limit', 10))
+        order = request.query_params.get('order', 'desc')  # asc / desc
+        query = request.query_params.get('query', '') 
+
+        trips = Trip.objects.all()
+
+        # Query
+        if query:
+            trips = trips.filter(
+                Q(start_route__location=query) |
+                Q(end_route__location=query) 
+            )
+
+        # Sắp xếp theo duration (nếu có), hoặc theo id
+        if order == 'asc':
+            trips = trips.order_by('id')
+        else:
+            trips = trips.order_by('-id')
+
+        # Phân trang
+        trips = trips[offset:offset + limit]
+
+        serializer = TripSerializer(trips, many=True)
+        return Response(serializer.data)

@@ -8,11 +8,18 @@ class Route(models.Model):
     class Meta:
         ordering = ['time']
 
+class Trip(models.Model):
+    start_route = models.ForeignKey(Route, related_name='trip_start', on_delete=models.CASCADE)
+    end_route = models.ForeignKey(Route, related_name='trip_end', on_delete=models.CASCADE, null=True, blank=True)
+    distance = models.FloatField(null=True, blank=True)
+    duration = models.DurationField(null=True, blank=True)
+
 class Alert(models.Model):
     start_time = models.CharField(max_length=20)
     end_time = models.CharField(max_length=20, null=True, blank=True)
     latitude = models.FloatField()
     longitude = models.FloatField()
+    location = models.CharField(max_length=100)
     is_active = models.BooleanField(default=True)
 
     class Meta:
