@@ -15,6 +15,9 @@ import firebase_admin
 from firebase_admin import credentials
 import os
 
+DJANGO_SETTINGS_MODULE = 'embedded_system.settings'
+
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -30,6 +33,7 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.AllowAny',  # Thay bằng IsAuthenticated trong production
     ]
 }
+
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -54,9 +58,30 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'rest_framework',
     'embedded_app',
+    'channels',
+    'corsheaders',
 ]
 
+ASGI_APPLICATION = 'embedded_system.asgi.application'
+
+# Cấu hình Redis cho WebSocket
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6380)],  # Cập nhật cổng Redis mới
+        },
+    },
+}
+
+CSP_DEFAULT_SRC = ("'self'",)
+CSP_CONNECT_SRC = ("'self'", "ws://127.0.0.1:8000")
+
+ALLOWED_HOSTS = ['*'] 
+
+
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -65,6 +90,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+CORS_ALLOW_ALL_ORIGINS = True
+
 
 ROOT_URLCONF = 'embedded_system.urls'
 

@@ -423,3 +423,216 @@ class NotificationView(APIView):
             return Response({'message': 'Notification sent successfully'}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+
+
+
+
+
+
+# sensors/views.py
+from django.http import JsonResponse
+from .utils import send_sensor_data_to_ws, send_alert_to_ws, send_recent_route_to_ws
+
+def get_current_sensor_data(request):
+    # Giả sử lấy dữ liệu sensor từ một nguồn
+    data = {'sensor1': 30, 'sensor2': 45}
+    send_sensor_data_to_ws(data)
+    return JsonResponse({'status': 'success', 'data': data})
+
+def get_alerts(request):
+    alerts = {'alert1': 'Warning: High temperature'}
+    send_alert_to_ws(alerts)
+    return JsonResponse({'status': 'success', 'alerts': alerts})
+
+def get_recent_route(request):
+    route = {'route1': 'A->B->C'}
+    send_recent_route_to_ws(route)
+    return JsonResponse({'status': 'success', 'route': route})
+
+
+# views.py hoặc bất kỳ nơi nào trong project của bạn
+from channels.layers import get_channel_layer
+
+def send_test_data():
+    channel_layer = get_channel_layer()
+
+    # Dữ liệu bạn muốn gửi
+    sensor_data = "Test sensor data"
+
+    # Gửi dữ liệu đến tất cả các client trong nhóm "sensor_data"
+    channel_layer.group_send(
+        "sensor_sensor_data",  # Nhóm (group) mà các client tham gia
+        {
+            'type': 'send_sensor_data',  # Phương thức sẽ được gọi trong consumer
+            'message': sensor_data  # Dữ liệu bạn muốn gửi
+        }
+    )
+
+
+# views.py
+from django.http import JsonResponse
+def trigger_send_data(request):
+    print("OK1")
+    send_test_data()
+    return JsonResponse({"status": "Data sent to WebSocket"})
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+
+class SendDataView(APIView):
+    def post(self, request):
+        # Get the channel layer and group name
+        channel_layer = get_channel_layer()
+        group_name = "sensor_data_group"
+
+        print("OK1")
+        # Gửi message đến group thông qua async_to_sync
+        async_to_sync(channel_layer.group_send)(
+            group_name,
+            {
+                'type': 'send_sensor_data',
+                'message': 'send_data'
+            }
+        )
+
+        print("OK2")
+        return Response({"message": "Sensor data sent to WebSocket clients."}, status=status.HTTP_200_OK)
+
+    
+# from channels.layers import get_channel_layer
+# from asgiref.sync import async_to_sync
+
+# channel_layer = get_channel_layer()
+
+# # Gửi dữ liệu đến group mà các client WebSocket đang join
+# async_to_sync(channel_layer.group_send)(
+#     "sensor_data_group",  # Tên của group trong consumer
+#     {
+#         "type": "send_sensor_data",  # Gọi hàm send_sensor_data trong consumer
+#         "message": "Dữ liệu cảm biến từ server"  # Bạn có thể gửi thêm thông tin nếu cần
+#     }
+# )
+
+
+
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+import time
+import json
+from .models import SensorData, Route
+
+@csrf_exempt
+def receive_sensor_data(request):
+    if request.method == 'POST':
+        try:
+            # Nhận và giải mã dữ liệu JSON từ body của request
+            body = json.loads(request.body)
+
+            # Chuẩn hóa dữ liệu với các giá trị mặc định nếu không có trong request
+            sensor_data = {
+                'timestamp': body.get('timestamp', str(int(time.time() * 1000))),
+                'latitude': body.get('latitude', 0),
+                'longitude': body.get('longitude', 0),
+                'AccX': body.get('AccX', 0),
+                'AccY': body.get('AccY', 0),
+                'AccZ': body.get('AccZ', 0),
+                'GyroX': body.get('GyroX', 0),
+                'GyroY': body.get('GyroY', 0),
+                'GyroZ': body.get('GyroZ', 0),
+                'temperature': body.get('temperature', 0),
+                'vibration_detected': body.get('vibration_detected', False)
+            }
+
+            # Tạo danh sách các đặc trưng cho mô hình dự đoán
+            features = [
+                sensor_data['AccX'], sensor_data['AccY'], sensor_data['AccZ'],
+                sensor_data['GyroX'], sensor_data['GyroY'], sensor_data['GyroZ']
+            ]
+
+            # Dự đoán rung lắc từ dữ liệu cảm biến
+            prediction = motion_predictor.predict(features)
+            sensor_data['vibration_detected'] = bool(prediction)
+
+            # Lưu dữ liệu cảm biến vào cơ sở dữ liệu
+            SensorData.objects.create(
+                latitude=sensor_data['latitude'],
+                longitude=sensor_data['longitude'],
+                AccX=sensor_data['AccX'],
+                AccY=sensor_data['AccY'],
+                AccZ=sensor_data['AccZ'],
+                GyroX=sensor_data['GyroX'],
+                GyroY=sensor_data['GyroY'],
+                GyroZ=sensor_data['GyroZ'],
+                temperature=sensor_data['temperature'],
+                vibration_detected=sensor_data['vibration_detected'],
+                timestamp=sensor_data['timestamp']
+            )
+
+            print(f"Dữ liệu cảm biến: {sensor_data}")
+
+            # Xử lý cảnh báo rung lắc
+            current_timestamp = int(time.time() * 1000)  # Cập nhật lại timestamp
+            handle_vibration_alert(str(current_timestamp), sensor_data, prediction)
+
+            # Lưu lộ trình vào SQLite nếu có tọa độ hợp lệ
+            if sensor_data['latitude'] != 0 and sensor_data['longitude'] != 0:
+                location = get_address_from_nominatim(sensor_data['latitude'], sensor_data['longitude'])
+                Route.objects.create(
+                    latitude=sensor_data['latitude'],
+                    longitude=sensor_data['longitude'],
+                    location=location,
+                    time=str(current_timestamp)
+                )
+
+            # Cập nhật dữ liệu mới nhất vào bộ nhớ (giả sử data_lock là một đối tượng đồng bộ)
+            with data_lock:
+                global latest_data
+                latest_data = sensor_data
+                last_processed_timestamp = current_timestamp
+
+            # Gửi dữ liệu sang WebSocket client
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                "sensor_data_group",  # Nhóm đã join từ WebSocket consumer
+                {
+                    'type': 'send_sensor_data',  # Loại sự kiện
+                    'data': sensor_data  # Dữ liệu gửi đến WebSocket client
+                }
+            )
+
+            # Trả về phản hồi thành công
+            return JsonResponse({'status': 'success', 'prediction': int(prediction)})
+
+        except json.JSONDecodeError:
+            return JsonResponse({'status': 'error', 'message': 'Invalid JSON format'}, status=400)
+        except KeyError as e:
+            return JsonResponse({'status': 'error', 'message': f'Missing key: {str(e)}'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+    return JsonResponse({'status': 'only POST accepted'}, status=405)
+
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+
+class HiView(APIView):
+    def post(self, request):
+        message = request.data.get('message')
+        if message:
+            return Response({'message': message}, status=status.HTTP_200_OK)
+        return Response({'error': 'Missing message field'}, status=status.HTTP_400_BAD_REQUEST)

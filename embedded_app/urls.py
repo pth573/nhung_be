@@ -20,4 +20,13 @@ urlpatterns = [
     #Device Token
     path('device-token', views.DeviceTokenView.as_view(), name='device_token'),
     path('send-notification', views.NotificationView.as_view(), name='send_notification'),
+
+
+    #  path('send-data/', views.trigger_send_data, name='send_data'),
+    path('send-data/', views.SendDataView.as_view(), name='send_data'),
+    path('receive-data/', views.receive_sensor_data),
+
+
+
+    path('hi/', views.HiView.as_view()),
 ]

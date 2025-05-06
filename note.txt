@@ -1,0 +1,9 @@
+pip install daphne
+daphne embedded_system.asgi:application
+daphne -b 0.0.0.0 -p 8000 embedded_system.asgi:application
+
+
+
+https://dashboard.ngrok.com/get-started/your-authtoken
+ngrok config add-authtoken ...
+ngrok http 8000
