@@ -79,6 +79,20 @@ CSP_CONNECT_SRC = ("'self'", "ws://127.0.0.1:8000")
 
 ALLOWED_HOSTS = ['*'] 
 
+# settings.py
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:8000",
+    "http://172.28.160.1",
+    "http://172.28.160.1:8000/api/receive-data/",
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://172.28.160.1",
+    "http://localhost:8000",
+    "http://172.28.160.1:8000/api/receive-data/",
+]
+
+
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
