@@ -17,20 +17,169 @@ from firebase_admin import messaging
 # Khởi tạo MotionPredictor từ ai_module
 motion_predictor = MotionPredictor()
 
-# Biến toàn cục
+
+
+# # Biến toàn cục
+# latest_data = None
+# active_alert = None
+# data_lock = threading.Lock()
+# last_processed_timestamp = 0
+# previous_data = None  # Lưu dữ liệu trước đó để so sánh sự thay đổi
+
+
+
+
+# def firebase_listener():
+#     ref = db.reference('ESP32')
+
+#     def callback(event):
+#         global latest_data, active_alert, last_processed_timestamp, previous_data
+
+#         data = event.data
+
+#         # Kiểm tra dữ liệu có tồn tại và hợp lệ
+#         if data is None:
+#             print("Nhận dữ liệu rỗng, có thể do node bị xóa")
+#             return
+
+#         # Kiểm tra nếu dữ liệu là dictionary
+#         if not isinstance(data, dict):
+#             print(f"Định dạng dữ liệu không hợp lệ, cần kiểu dictionary: {data}")
+#             return
+
+#         # Tạo timestamp thủ công để kiểm tra dữ liệu mới
+#         current_timestamp = int(time.time() * 1000)  # Timestamp dạng millisecond
+
+#         # Chuẩn bị dữ liệu mới
+#         new_data = {
+#             'latitude': data.get('Latitude', 0),
+#             'longitude': data.get('Longitude', 0),
+#             'AccX': data.get('AccX', 0),
+#             'AccY': data.get('AccY', 0),
+#             'AccZ': data.get('AccZ', 0),
+#             'GyroX': data.get('GyroX', 0),
+#             'GyroY': data.get('GyroY', 0),
+#             'GyroZ': data.get('GyroZ', 0),
+#             'Temperature': data.get('Temperature', 0),
+#             'vibration_detected': False,
+#             'timestamp': str(current_timestamp)
+#         }
+
+#         # Kiểm tra sự thay đổi nếu có dữ liệu trước đó
+#         if previous_data:
+#             # Xác định các trường đã thay đổi
+#             changed_fields = {}
+#             for key in new_data:
+#                 if key in previous_data and new_data[key] != previous_data[key]:
+#                     changed_fields[key] = {
+#                         'old': previous_data[key],
+#                         'new': new_data[key]
+#                     }
+            
+#             # if changed_fields:
+#             #     print("\n=== Phát hiện thay đổi trong dữ liệu ===")
+#             #     for field, values in changed_fields.items():
+#             #         print(f"{field}: {values['old']} -> {values['new']}")
+            
+#             # Nếu chỉ có timestamp thay đổi, bỏ qua
+#             if len(changed_fields) == 1 and 'timestamp' in changed_fields:
+#                 # print("Chỉ có timestamp thay đổi, bỏ qua")
+#                 return
+            
+#             # Nếu không có thay đổi, bỏ qua xử lý
+#             if not changed_fields:
+#                 # print("Không có thay đổi trong dữ liệu, bỏ qua")
+#                 return
+        
+#         # Lưu dữ liệu hiện tại để so sánh trong lần tiếp theo
+#         previous_data = new_data.copy()
+        
+#         # Chuẩn bị dữ liệu cho dự đoán AI
+#         features = [
+#             new_data['AccX'], new_data['AccY'], new_data['AccZ'],
+#             new_data['GyroX'], new_data['GyroY'], new_data['GyroZ']
+#         ]
+        
+#         # Sử dụng MotionPredictor để dự đoán rung lắc
+#         prediction = motion_predictor.predict(features)
+#         new_data['vibration_detected'] = bool(prediction)
+
+#         # In dữ liệu cảm biến và dự đoán
+#         print(f"\n=== Nhận dữ liệu mới ===")
+#         print(f"Dữ liệu cảm biến: {json.dumps(new_data, indent=2, ensure_ascii=False)}")
+#         print(f"Dự đoán rung lắc: {'Có rung' if prediction == 1 else 'Không rung'}")
+
+#         # Lưu dữ liệu cảm biến vào SQLite
+#         SensorData.objects.create(
+#             latitude=new_data['latitude'],
+#             longitude=new_data['longitude'],
+#             AccX=new_data['AccX'],
+#             AccY=new_data['AccY'],
+#             AccZ=new_data['AccZ'],
+#             GyroX=new_data['GyroX'],
+#             GyroY=new_data['GyroY'],
+#             GyroZ=new_data['GyroZ'],
+#             temperature=new_data['Temperature'],
+#             vibration_detected=new_data['vibration_detected'],
+#             timestamp=str(current_timestamp)
+#         )
+
+#         # Xử lý cảnh báo rung lắc
+#         handle_vibration_alert(str(current_timestamp), new_data, prediction)
+
+#         # Lưu lộ trình vào SQLite nếu có tọa độ hợp lệ
+#         if new_data['latitude'] != 0 and new_data['longitude'] != 0:
+#             Route.objects.create(
+#                 latitude=new_data['latitude'],
+#                 longitude=new_data['longitude'],
+#                 location=get_address_from_nominatim(new_data['latitude'], new_data['longitude']),
+#                 time=str(current_timestamp)  
+#             )
+
+#         # Cập nhật dữ liệu mới nhất và timestamp đã xử lý
+#         with data_lock:
+#             global latest_data
+#             latest_data = new_data
+#             last_processed_timestamp = current_timestamp
+
+#     try:
+#         ref.listen(callback)
+#     except Exception as e:
+#         print(f"Lỗi trong Firebase listener: {e}")
+
+
+
+
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
+import time
+import json
+from .models import SensorData, Route
+from firebase_admin import db
+
+# Khởi tạo MotionPredictor từ ai_module
+motion_predictor = MotionPredictor()
+
 latest_data = None
 active_alert = None
 data_lock = threading.Lock()
 last_processed_timestamp = 0
 previous_data = None  # Lưu dữ liệu trước đó để so sánh sự thay đổi
 
+
+
+
 def firebase_listener():
     ref = db.reference('ESP32')
 
     def callback(event):
         global latest_data, active_alert, last_processed_timestamp, previous_data
+        # data = event.data
 
-        data = event.data
+        data = ref.get()
+        print(data)
 
         # Kiểm tra dữ liệu có tồn tại và hợp lệ
         if data is None:
@@ -47,6 +196,7 @@ def firebase_listener():
 
         # Chuẩn bị dữ liệu mới
         new_data = {
+            'timestamp': str(current_timestamp),
             'latitude': data.get('Latitude', 0),
             'longitude': data.get('Longitude', 0),
             'AccX': data.get('AccX', 0),
@@ -55,9 +205,8 @@ def firebase_listener():
             'GyroX': data.get('GyroX', 0),
             'GyroY': data.get('GyroY', 0),
             'GyroZ': data.get('GyroZ', 0),
-            'Temperature': data.get('Temperature', 0),
-            'vibration_detected': False,
-            'timestamp': str(current_timestamp)
+            'temperature': data.get('Temperature', 0),
+            'vibration_detected': False
         }
 
         # Kiểm tra sự thay đổi nếu có dữ liệu trước đó
@@ -71,19 +220,12 @@ def firebase_listener():
                         'new': new_data[key]
                     }
             
-            # if changed_fields:
-            #     print("\n=== Phát hiện thay đổi trong dữ liệu ===")
-            #     for field, values in changed_fields.items():
-            #         print(f"{field}: {values['old']} -> {values['new']}")
-            
             # Nếu chỉ có timestamp thay đổi, bỏ qua
             if len(changed_fields) == 1 and 'timestamp' in changed_fields:
-                # print("Chỉ có timestamp thay đổi, bỏ qua")
                 return
             
             # Nếu không có thay đổi, bỏ qua xử lý
             if not changed_fields:
-                # print("Không có thay đổi trong dữ liệu, bỏ qua")
                 return
         
         # Lưu dữ liệu hiện tại để so sánh trong lần tiếp theo
@@ -100,7 +242,6 @@ def firebase_listener():
         new_data['vibration_detected'] = bool(prediction)
 
         # In dữ liệu cảm biến và dự đoán
-        print(f"\n=== Nhận dữ liệu mới ===")
         print(f"Dữ liệu cảm biến: {json.dumps(new_data, indent=2, ensure_ascii=False)}")
         print(f"Dự đoán rung lắc: {'Có rung' if prediction == 1 else 'Không rung'}")
 
@@ -114,7 +255,7 @@ def firebase_listener():
             GyroX=new_data['GyroX'],
             GyroY=new_data['GyroY'],
             GyroZ=new_data['GyroZ'],
-            temperature=new_data['Temperature'],
+            temperature=new_data['temperature'],
             vibration_detected=new_data['vibration_detected'],
             timestamp=str(current_timestamp)
         )
@@ -137,10 +278,21 @@ def firebase_listener():
             latest_data = new_data
             last_processed_timestamp = current_timestamp
 
+        # Gửi dữ liệu sang WebSocket client
+        channel_layer = get_channel_layer()
+        async_to_sync(channel_layer.group_send)(
+            "sensor_data_group",  # Nhóm đã join từ WebSocket consumer
+            {
+                'type': 'send_sensor_data',  # Loại sự kiện
+                'data': new_data  # Dữ liệu gửi đến WebSocket client
+            }
+        )
+
     try:
         ref.listen(callback)
     except Exception as e:
         print(f"Lỗi trong Firebase listener: {e}")
+
 
 def handle_vibration_alert(timestamp, data, prediction):
     global active_alert
@@ -636,3 +788,154 @@ class HiView(APIView):
         if message:
             return Response({'message': message}, status=status.HTTP_200_OK)
         return Response({'error': 'Missing message field'}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+
+
+
+
+
+
+
+# from django.views.decorators.csrf import csrf_exempt
+# from django.http import JsonResponse
+# from channels.layers import get_channel_layer
+# from asgiref.sync import async_to_sync
+# import time
+# import json
+# from .models import SensorData, Route
+# from firebase_admin import db
+
+# # Khởi tạo MotionPredictor từ ai_module
+# motion_predictor = MotionPredictor()
+
+# # Biến toàn cục
+# latest_data = None
+# active_alert = None
+# data_lock = threading.Lock()
+# last_processed_timestamp = 0
+# previous_data = None  # Lưu dữ liệu trước đó để so sánh sự thay đổi
+
+# def firebase_listener():
+#     ref = db.reference('ESP32')
+
+#     def callback(event):
+#         global latest_data, active_alert, last_processed_timestamp, previous_data
+
+
+#         data = event.data
+#         print(f"Dữ liệu nhận được từ Firebase: {data}")
+
+#         # Kiểm tra dữ liệu có tồn tại và hợp lệ
+#         if data is None:
+#             print("Nhận dữ liệu rỗng, có thể do node bị xóa")
+#             return
+
+#         # Kiểm tra nếu dữ liệu là dictionary
+#         if not isinstance(data, dict):
+#             print(f"Định dạng dữ liệu không hợp lệ, cần kiểu dictionary: {data}")
+#             return
+
+#         # Tạo timestamp thủ công để kiểm tra dữ liệu mới
+#         current_timestamp = int(time.time() * 1000)  # Timestamp dạng millisecond
+
+#         # Chuẩn bị dữ liệu mới
+#         new_data = {
+#             'latitude': data.get('Latitude', 0),
+#             'longitude': data.get('Longitude', 0),
+#             'AccX': data.get('AccX', 0),
+#             'AccY': data.get('AccY', 0),
+#             'AccZ': data.get('AccZ', 0),
+#             'GyroX': data.get('GyroX', 0),
+#             'GyroY': data.get('GyroY', 0),
+#             'GyroZ': data.get('GyroZ', 0),
+#             'Temperature': data.get('Temperature', 0),
+#             'vibration_detected': False,
+#             'timestamp': str(current_timestamp)
+#         }
+
+#         # Kiểm tra sự thay đổi nếu có dữ liệu trước đó
+#         if previous_data:
+#             # Xác định các trường đã thay đổi
+#             changed_fields = {}
+#             for key in new_data:
+#                 if key in previous_data and new_data[key] != previous_data[key]:
+#                     changed_fields[key] = {
+#                         'old': previous_data[key],
+#                         'new': new_data[key]
+#                     }
+            
+#             # Nếu chỉ có timestamp thay đổi, bỏ qua
+#             if len(changed_fields) == 1 and 'timestamp' in changed_fields:
+#                 return
+            
+#             # Nếu không có thay đổi, bỏ qua xử lý
+#             if not changed_fields:
+#                 return
+        
+#         # Lưu dữ liệu hiện tại để so sánh trong lần tiếp theo
+#         previous_data = new_data.copy()
+        
+#         # Chuẩn bị dữ liệu cho dự đoán AI
+#         features = [
+#             new_data['AccX'], new_data['AccY'], new_data['AccZ'],
+#             new_data['GyroX'], new_data['GyroY'], new_data['GyroZ']
+#         ]
+        
+#         # Sử dụng MotionPredictor để dự đoán rung lắc
+#         prediction = motion_predictor.predict(features)
+#         new_data['vibration_detected'] = bool(prediction)
+
+#         # In dữ liệu cảm biến và dự đoán
+#         print(f"Dữ liệu cảm biến: {json.dumps(new_data, indent=2, ensure_ascii=False)}")
+#         print(f"Dự đoán rung lắc: {'Có rung' if prediction == 1 else 'Không rung'}")
+
+#         # Lưu dữ liệu cảm biến vào SQLite
+#         SensorData.objects.create(
+#             latitude=new_data['latitude'],
+#             longitude=new_data['longitude'],
+#             AccX=new_data['AccX'],
+#             AccY=new_data['AccY'],
+#             AccZ=new_data['AccZ'],
+#             GyroX=new_data['GyroX'],
+#             GyroY=new_data['GyroY'],
+#             GyroZ=new_data['GyroZ'],
+#             temperature=new_data['Temperature'],
+#             vibration_detected=new_data['vibration_detected'],
+#             timestamp=str(current_timestamp)
+#         )
+
+#         # Xử lý cảnh báo rung lắc
+#         handle_vibration_alert(str(current_timestamp), new_data, prediction)
+
+#         # Lưu lộ trình vào SQLite nếu có tọa độ hợp lệ
+#         if new_data['latitude'] != 0 and new_data['longitude'] != 0:
+#             Route.objects.create(
+#                 latitude=new_data['latitude'],
+#                 longitude=new_data['longitude'],
+#                 location=get_address_from_nominatim(new_data['latitude'], new_data['longitude']),
+#                 time=str(current_timestamp)  
+#             )
+
+#         # Cập nhật dữ liệu mới nhất và timestamp đã xử lý
+#         with data_lock:
+#             global latest_data
+#             latest_data = new_data
+#             last_processed_timestamp = current_timestamp
+
+#         # Gửi dữ liệu sang WebSocket client
+#         channel_layer = get_channel_layer()
+#         async_to_sync(channel_layer.group_send)(
+#             "sensor_data_group",  # Nhóm đã join từ WebSocket consumer
+#             {
+#                 'type': 'send_sensor_data',  # Loại sự kiện
+#                 'data': new_data  # Dữ liệu gửi đến WebSocket client
+#             }
+#         )
+
+#     try:
+#         ref.listen(callback)
+#     except Exception as e:
+#         print(f"Lỗi trong Firebase listener: {e}")
