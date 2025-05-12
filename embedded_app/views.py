@@ -14,141 +14,7 @@ from geopy.distance import geodesic
 from django.db.models import Q
 from firebase_admin import messaging
 
-# Khởi tạo MotionPredictor từ ai_module
 motion_predictor = MotionPredictor()
-
-
-
-# # Biến toàn cục
-# latest_data = None
-# active_alert = None
-# data_lock = threading.Lock()
-# last_processed_timestamp = 0
-# previous_data = None  # Lưu dữ liệu trước đó để so sánh sự thay đổi
-
-
-
-
-# def firebase_listener():
-#     ref = db.reference('ESP32')
-
-#     def callback(event):
-#         global latest_data, active_alert, last_processed_timestamp, previous_data
-
-#         data = event.data
-
-#         # Kiểm tra dữ liệu có tồn tại và hợp lệ
-#         if data is None:
-#             print("Nhận dữ liệu rỗng, có thể do node bị xóa")
-#             return
-
-#         # Kiểm tra nếu dữ liệu là dictionary
-#         if not isinstance(data, dict):
-#             print(f"Định dạng dữ liệu không hợp lệ, cần kiểu dictionary: {data}")
-#             return
-
-#         # Tạo timestamp thủ công để kiểm tra dữ liệu mới
-#         current_timestamp = int(time.time() * 1000)  # Timestamp dạng millisecond
-
-#         # Chuẩn bị dữ liệu mới
-#         new_data = {
-#             'latitude': data.get('Latitude', 0),
-#             'longitude': data.get('Longitude', 0),
-#             'AccX': data.get('AccX', 0),
-#             'AccY': data.get('AccY', 0),
-#             'AccZ': data.get('AccZ', 0),
-#             'GyroX': data.get('GyroX', 0),
-#             'GyroY': data.get('GyroY', 0),
-#             'GyroZ': data.get('GyroZ', 0),
-#             'Temperature': data.get('Temperature', 0),
-#             'vibration_detected': False,
-#             'timestamp': str(current_timestamp)
-#         }
-
-#         # Kiểm tra sự thay đổi nếu có dữ liệu trước đó
-#         if previous_data:
-#             # Xác định các trường đã thay đổi
-#             changed_fields = {}
-#             for key in new_data:
-#                 if key in previous_data and new_data[key] != previous_data[key]:
-#                     changed_fields[key] = {
-#                         'old': previous_data[key],
-#                         'new': new_data[key]
-#                     }
-            
-#             # if changed_fields:
-#             #     print("\n=== Phát hiện thay đổi trong dữ liệu ===")
-#             #     for field, values in changed_fields.items():
-#             #         print(f"{field}: {values['old']} -> {values['new']}")
-            
-#             # Nếu chỉ có timestamp thay đổi, bỏ qua
-#             if len(changed_fields) == 1 and 'timestamp' in changed_fields:
-#                 # print("Chỉ có timestamp thay đổi, bỏ qua")
-#                 return
-            
-#             # Nếu không có thay đổi, bỏ qua xử lý
-#             if not changed_fields:
-#                 # print("Không có thay đổi trong dữ liệu, bỏ qua")
-#                 return
-        
-#         # Lưu dữ liệu hiện tại để so sánh trong lần tiếp theo
-#         previous_data = new_data.copy()
-        
-#         # Chuẩn bị dữ liệu cho dự đoán AI
-#         features = [
-#             new_data['AccX'], new_data['AccY'], new_data['AccZ'],
-#             new_data['GyroX'], new_data['GyroY'], new_data['GyroZ']
-#         ]
-        
-#         # Sử dụng MotionPredictor để dự đoán rung lắc
-#         prediction = motion_predictor.predict(features)
-#         new_data['vibration_detected'] = bool(prediction)
-
-#         # In dữ liệu cảm biến và dự đoán
-#         print(f"\n=== Nhận dữ liệu mới ===")
-#         print(f"Dữ liệu cảm biến: {json.dumps(new_data, indent=2, ensure_ascii=False)}")
-#         print(f"Dự đoán rung lắc: {'Có rung' if prediction == 1 else 'Không rung'}")
-
-#         # Lưu dữ liệu cảm biến vào SQLite
-#         SensorData.objects.create(
-#             latitude=new_data['latitude'],
-#             longitude=new_data['longitude'],
-#             AccX=new_data['AccX'],
-#             AccY=new_data['AccY'],
-#             AccZ=new_data['AccZ'],
-#             GyroX=new_data['GyroX'],
-#             GyroY=new_data['GyroY'],
-#             GyroZ=new_data['GyroZ'],
-#             temperature=new_data['Temperature'],
-#             vibration_detected=new_data['vibration_detected'],
-#             timestamp=str(current_timestamp)
-#         )
-
-#         # Xử lý cảnh báo rung lắc
-#         handle_vibration_alert(str(current_timestamp), new_data, prediction)
-
-#         # Lưu lộ trình vào SQLite nếu có tọa độ hợp lệ
-#         if new_data['latitude'] != 0 and new_data['longitude'] != 0:
-#             Route.objects.create(
-#                 latitude=new_data['latitude'],
-#                 longitude=new_data['longitude'],
-#                 location=get_address_from_nominatim(new_data['latitude'], new_data['longitude']),
-#                 time=str(current_timestamp)  
-#             )
-
-#         # Cập nhật dữ liệu mới nhất và timestamp đã xử lý
-#         with data_lock:
-#             global latest_data
-#             latest_data = new_data
-#             last_processed_timestamp = current_timestamp
-
-#     try:
-#         ref.listen(callback)
-#     except Exception as e:
-#         print(f"Lỗi trong Firebase listener: {e}")
-
-
-
 
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
@@ -281,9 +147,9 @@ def firebase_listener():
         # Gửi dữ liệu sang WebSocket client
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
-            "sensor_data_group",  # Nhóm đã join từ WebSocket consumer
+            "sensor_data_group",  
             {
-                'type': 'send_sensor_data',  # Loại sự kiện
+                'type': 'send_sensor_data',  
                 'data': new_data  # Dữ liệu gửi đến WebSocket client
             }
         )
@@ -362,7 +228,6 @@ class CurrentSensorDataView(APIView):
             if latest_data is None:
                 return Response({"error": "Chưa có dữ liệu nào"}, status=status.HTTP_404_NOT_FOUND)
             
-            # Trả về dữ liệu mới nhất
             return Response(SensorDataSerializer({
                 'timestamp': latest_data['timestamp'],
                 'latitude': latest_data['latitude'],
@@ -373,33 +238,24 @@ class CurrentSensorDataView(APIView):
                 'GyroX': latest_data['GyroX'],
                 'GyroY': latest_data['GyroY'],
                 'GyroZ': latest_data['GyroZ'],
-                'temperature': latest_data['Temperature'],
+                'temperature': latest_data['temperature'],
                 'vibration_detected': latest_data['vibration_detected']
             }).data)
 
 class SensorDataHistoryView(APIView):
     def get(self, request):
-        # Lấy tham số limit và time_range từ query
         limit = int(request.query_params.get('limit', 50))
-        time_range = request.query_params.get('time_range', None)  # time_range dạng millisecond
-
-        # Lấy timestamp hiện tại
+        time_range = request.query_params.get('time_range', None) 
         current_timestamp = int(time.time() * 1000)
-
-        # Lọc dữ liệu
         if time_range:
             threshold_timestamp = str(current_timestamp - int(time_range))
             sensor_data = SensorData.objects.filter(timestamp__gte=threshold_timestamp).order_by('-timestamp')
         else:
             sensor_data = SensorData.objects.all().order_by('-timestamp')
-
-        # Giới hạn số lượng bản ghi
         sensor_data = sensor_data[:limit]
         
         if not sensor_data:
             return Response({"error": "Không tìm thấy dữ liệu cảm biến"}, status=status.HTTP_404_NOT_FOUND)
-
-        # Trả về dữ liệu đã được serialize
         serializer = SensorDataSerializer(sensor_data, many=True)
         return Response({'sensor_data': serializer.data})
 
@@ -411,10 +267,7 @@ class RouteView(APIView):
 
 class RecentRouteView(APIView):
     def get(self, request):
-        # Lấy tham số limit từ query (mặc định là 10)
         limit = int(request.query_params.get('limit', 10))
-        
-        # Lấy các điểm lộ trình mới nhất, sắp xếp theo time giảm dần
         routes = Route.objects.all().order_by('-time')[:limit]
         
         if not routes:
@@ -428,22 +281,17 @@ class AlertView(APIView):
     def get(self, request):
         offset = int(request.query_params.get('offset', 0))
         limit = int(request.query_params.get('limit', 10))
-        order = request.query_params.get('order', 'desc')  # 'asc' hoặc 'desc'
+        order = request.query_params.get('order', 'desc')  
         query = request.query_params.get('query', '')
 
         alerts = Alert.objects.all()
-
-       # Lọc theo location nếu có query
         if query:
             alerts = alerts.filter(location__icontains=query)
-
-        # Sắp xếp theo thời gian
         if order == 'asc':
             alerts = alerts.order_by('start_time')
         else:
             alerts = alerts.order_by('-start_time')
 
-        # Phân trang
         alerts = alerts[offset:offset + limit]
 
         serializer = AlertSerializer(alerts, many=True)
@@ -481,7 +329,6 @@ class DeleteAlertDataView(APIView):
         try:
             count = Alert.objects.count()
             Alert.objects.all().delete()
-            # Đặt lại active_alert về None nếu đang có cảnh báo active
             global active_alert
             active_alert = None
             return Response({"message": f"Đã xóa thành công {count} bản ghi cảnh báo."}, status=status.HTTP_200_OK)
@@ -578,19 +425,11 @@ class NotificationView(APIView):
 
 
 
-
-
-
-
-
-
-
 # sensors/views.py
 from django.http import JsonResponse
 from .utils import send_sensor_data_to_ws, send_alert_to_ws, send_recent_route_to_ws
 
 def get_current_sensor_data(request):
-    # Giả sử lấy dữ liệu sensor từ một nguồn
     data = {'sensor1': 30, 'sensor2': 45}
     send_sensor_data_to_ws(data)
     return JsonResponse({'status': 'success', 'data': data})
@@ -606,29 +445,22 @@ def get_recent_route(request):
     return JsonResponse({'status': 'success', 'route': route})
 
 
-# views.py hoặc bất kỳ nơi nào trong project của bạn
 from channels.layers import get_channel_layer
 
 def send_test_data():
     channel_layer = get_channel_layer()
-
-    # Dữ liệu bạn muốn gửi
     sensor_data = "Test sensor data"
-
-    # Gửi dữ liệu đến tất cả các client trong nhóm "sensor_data"
     channel_layer.group_send(
-        "sensor_sensor_data",  # Nhóm (group) mà các client tham gia
+        "sensor_sensor_data",  
         {
-            'type': 'send_sensor_data',  # Phương thức sẽ được gọi trong consumer
-            'message': sensor_data  # Dữ liệu bạn muốn gửi
+            'type': 'send_sensor_data',  
+            'message': sensor_data 
         }
     )
 
 
-# views.py
 from django.http import JsonResponse
 def trigger_send_data(request):
-    print("OK1")
     send_test_data()
     return JsonResponse({"status": "Data sent to WebSocket"})
 
@@ -642,12 +474,8 @@ from asgiref.sync import async_to_sync
 
 class SendDataView(APIView):
     def post(self, request):
-        # Get the channel layer and group name
         channel_layer = get_channel_layer()
         group_name = "sensor_data_group"
-
-        print("OK1")
-        # Gửi message đến group thông qua async_to_sync
         async_to_sync(channel_layer.group_send)(
             group_name,
             {
@@ -655,24 +483,8 @@ class SendDataView(APIView):
                 'message': 'send_data'
             }
         )
-
-        print("OK2")
         return Response({"message": "Sensor data sent to WebSocket clients."}, status=status.HTTP_200_OK)
 
-    
-# from channels.layers import get_channel_layer
-# from asgiref.sync import async_to_sync
-
-# channel_layer = get_channel_layer()
-
-# # Gửi dữ liệu đến group mà các client WebSocket đang join
-# async_to_sync(channel_layer.group_send)(
-#     "sensor_data_group",  # Tên của group trong consumer
-#     {
-#         "type": "send_sensor_data",  # Gọi hàm send_sensor_data trong consumer
-#         "message": "Dữ liệu cảm biến từ server"  # Bạn có thể gửi thêm thông tin nếu cần
-#     }
-# )
 
 
 
@@ -688,10 +500,7 @@ from .models import SensorData, Route
 def receive_sensor_data(request):
     if request.method == 'POST':
         try:
-            # Nhận và giải mã dữ liệu JSON từ body của request
             body = json.loads(request.body)
-
-            # Chuẩn hóa dữ liệu với các giá trị mặc định nếu không có trong request
             sensor_data = {
                 'timestamp': body.get('timestamp', str(int(time.time() * 1000))),
                 'latitude': body.get('latitude', 0),
@@ -705,8 +514,6 @@ def receive_sensor_data(request):
                 'temperature': body.get('temperature', 0),
                 'vibration_detected': body.get('vibration_detected', False)
             }
-
-            # Tạo danh sách các đặc trưng cho mô hình dự đoán
             features = [
                 sensor_data['AccX'], sensor_data['AccY'], sensor_data['AccZ'],
                 sensor_data['GyroX'], sensor_data['GyroY'], sensor_data['GyroZ']
@@ -734,10 +541,9 @@ def receive_sensor_data(request):
             print(f"Dữ liệu cảm biến: {sensor_data}")
 
             # Xử lý cảnh báo rung lắc
-            current_timestamp = int(time.time() * 1000)  # Cập nhật lại timestamp
+            current_timestamp = int(time.time() * 1000)  
             handle_vibration_alert(str(current_timestamp), sensor_data, prediction)
 
-            # Lưu lộ trình vào SQLite nếu có tọa độ hợp lệ
             if sensor_data['latitude'] != 0 and sensor_data['longitude'] != 0:
                 location = get_address_from_nominatim(sensor_data['latitude'], sensor_data['longitude'])
                 Route.objects.create(
@@ -746,8 +552,6 @@ def receive_sensor_data(request):
                     location=location,
                     time=str(current_timestamp)
                 )
-
-            # Cập nhật dữ liệu mới nhất vào bộ nhớ (giả sử data_lock là một đối tượng đồng bộ)
             with data_lock:
                 global latest_data
                 latest_data = sensor_data
@@ -756,14 +560,13 @@ def receive_sensor_data(request):
             # Gửi dữ liệu sang WebSocket client
             channel_layer = get_channel_layer()
             async_to_sync(channel_layer.group_send)(
-                "sensor_data_group",  # Nhóm đã join từ WebSocket consumer
+                "sensor_data_group",  # Nhóm join từ WebSocket consumer
                 {
-                    'type': 'send_sensor_data',  # Loại sự kiện
-                    'data': sensor_data  # Dữ liệu gửi đến WebSocket client
+                    'type': 'send_sensor_data',  
+                    'data': sensor_data  
                 }
             )
 
-            # Trả về phản hồi thành công
             return JsonResponse({'status': 'success', 'prediction': int(prediction)})
 
         except json.JSONDecodeError:
@@ -775,167 +578,3 @@ def receive_sensor_data(request):
 
     return JsonResponse({'status': 'only POST accepted'}, status=405)
 
-
-
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-
-class HiView(APIView):
-    def post(self, request):
-        message = request.data.get('message')
-        if message:
-            return Response({'message': message}, status=status.HTTP_200_OK)
-        return Response({'error': 'Missing message field'}, status=status.HTTP_400_BAD_REQUEST)
-
-
-
-
-
-
-
-
-
-
-
-# from django.views.decorators.csrf import csrf_exempt
-# from django.http import JsonResponse
-# from channels.layers import get_channel_layer
-# from asgiref.sync import async_to_sync
-# import time
-# import json
-# from .models import SensorData, Route
-# from firebase_admin import db
-
-# # Khởi tạo MotionPredictor từ ai_module
-# motion_predictor = MotionPredictor()
-
-# # Biến toàn cục
-# latest_data = None
-# active_alert = None
-# data_lock = threading.Lock()
-# last_processed_timestamp = 0
-# previous_data = None  # Lưu dữ liệu trước đó để so sánh sự thay đổi
-
-# def firebase_listener():
-#     ref = db.reference('ESP32')
-
-#     def callback(event):
-#         global latest_data, active_alert, last_processed_timestamp, previous_data
-
-
-#         data = event.data
-#         print(f"Dữ liệu nhận được từ Firebase: {data}")
-
-#         # Kiểm tra dữ liệu có tồn tại và hợp lệ
-#         if data is None:
-#             print("Nhận dữ liệu rỗng, có thể do node bị xóa")
-#             return
-
-#         # Kiểm tra nếu dữ liệu là dictionary
-#         if not isinstance(data, dict):
-#             print(f"Định dạng dữ liệu không hợp lệ, cần kiểu dictionary: {data}")
-#             return
-
-#         # Tạo timestamp thủ công để kiểm tra dữ liệu mới
-#         current_timestamp = int(time.time() * 1000)  # Timestamp dạng millisecond
-
-#         # Chuẩn bị dữ liệu mới
-#         new_data = {
-#             'latitude': data.get('Latitude', 0),
-#             'longitude': data.get('Longitude', 0),
-#             'AccX': data.get('AccX', 0),
-#             'AccY': data.get('AccY', 0),
-#             'AccZ': data.get('AccZ', 0),
-#             'GyroX': data.get('GyroX', 0),
-#             'GyroY': data.get('GyroY', 0),
-#             'GyroZ': data.get('GyroZ', 0),
-#             'Temperature': data.get('Temperature', 0),
-#             'vibration_detected': False,
-#             'timestamp': str(current_timestamp)
-#         }
-
-#         # Kiểm tra sự thay đổi nếu có dữ liệu trước đó
-#         if previous_data:
-#             # Xác định các trường đã thay đổi
-#             changed_fields = {}
-#             for key in new_data:
-#                 if key in previous_data and new_data[key] != previous_data[key]:
-#                     changed_fields[key] = {
-#                         'old': previous_data[key],
-#                         'new': new_data[key]
-#                     }
-            
-#             # Nếu chỉ có timestamp thay đổi, bỏ qua
-#             if len(changed_fields) == 1 and 'timestamp' in changed_fields:
-#                 return
-            
-#             # Nếu không có thay đổi, bỏ qua xử lý
-#             if not changed_fields:
-#                 return
-        
-#         # Lưu dữ liệu hiện tại để so sánh trong lần tiếp theo
-#         previous_data = new_data.copy()
-        
-#         # Chuẩn bị dữ liệu cho dự đoán AI
-#         features = [
-#             new_data['AccX'], new_data['AccY'], new_data['AccZ'],
-#             new_data['GyroX'], new_data['GyroY'], new_data['GyroZ']
-#         ]
-        
-#         # Sử dụng MotionPredictor để dự đoán rung lắc
-#         prediction = motion_predictor.predict(features)
-#         new_data['vibration_detected'] = bool(prediction)
-
-#         # In dữ liệu cảm biến và dự đoán
-#         print(f"Dữ liệu cảm biến: {json.dumps(new_data, indent=2, ensure_ascii=False)}")
-#         print(f"Dự đoán rung lắc: {'Có rung' if prediction == 1 else 'Không rung'}")
-
-#         # Lưu dữ liệu cảm biến vào SQLite
-#         SensorData.objects.create(
-#             latitude=new_data['latitude'],
-#             longitude=new_data['longitude'],
-#             AccX=new_data['AccX'],
-#             AccY=new_data['AccY'],
-#             AccZ=new_data['AccZ'],
-#             GyroX=new_data['GyroX'],
-#             GyroY=new_data['GyroY'],
-#             GyroZ=new_data['GyroZ'],
-#             temperature=new_data['Temperature'],
-#             vibration_detected=new_data['vibration_detected'],
-#             timestamp=str(current_timestamp)
-#         )
-
-#         # Xử lý cảnh báo rung lắc
-#         handle_vibration_alert(str(current_timestamp), new_data, prediction)
-
-#         # Lưu lộ trình vào SQLite nếu có tọa độ hợp lệ
-#         if new_data['latitude'] != 0 and new_data['longitude'] != 0:
-#             Route.objects.create(
-#                 latitude=new_data['latitude'],
-#                 longitude=new_data['longitude'],
-#                 location=get_address_from_nominatim(new_data['latitude'], new_data['longitude']),
-#                 time=str(current_timestamp)  
-#             )
-
-#         # Cập nhật dữ liệu mới nhất và timestamp đã xử lý
-#         with data_lock:
-#             global latest_data
-#             latest_data = new_data
-#             last_processed_timestamp = current_timestamp
-
-#         # Gửi dữ liệu sang WebSocket client
-#         channel_layer = get_channel_layer()
-#         async_to_sync(channel_layer.group_send)(
-#             "sensor_data_group",  # Nhóm đã join từ WebSocket consumer
-#             {
-#                 'type': 'send_sensor_data',  # Loại sự kiện
-#                 'data': new_data  # Dữ liệu gửi đến WebSocket client
-#             }
-#         )
-
-#     try:
-#         ref.listen(callback)
-#     except Exception as e:
-#         print(f"Lỗi trong Firebase listener: {e}")

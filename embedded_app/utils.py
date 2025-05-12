@@ -1,4 +1,3 @@
-# sensors/utils.py
 from channels.layers import get_channel_layer
 
 def send_sensor_data_to_ws(data):

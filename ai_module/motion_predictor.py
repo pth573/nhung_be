@@ -15,7 +15,6 @@ WINDOW_SIZE = 10
 
 class MotionPredictor:
     def __init__(self):
-        # Không cần lưu chuỗi dữ liệu vì dự đoán chỉ dùng 1 điểm
         pass
     
     def predict(self, features):
